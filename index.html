@@ -5,15 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>목멱성 정기공연 합주 매칭 시스템</title>
     <style>
-        body { font-family: 'Pretendard', -apple-system, sans-serif; background-color: #f4f6f9; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }
+        body { font-family: 'Pretendard', -apple-system, sans-serif; background-color: #f4f6f9; color: #333; max-width: 1200px; margin: 0 auto; padding: 20px; }
         h1 { color: #2c3e50; text-align: center; }
-        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; max-width: 800px; margin-left: auto; margin-right: auto; }
         input[type="file"] { display: block; margin-bottom: 15px; }
         button { background-color: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold; width: 100%; transition: background 0.3s; }
         button:hover { background-color: #2980b9; }
         button:disabled { background-color: #95a5a6; cursor: not-allowed; }
-        pre { background-color: #282c34; color: #abb2bf; padding: 15px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; font-family: 'Courier New', monospace; line-height: 1.5; }
+        pre { background-color: #282c34; color: #abb2bf; padding: 15px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; font-family: 'Courier New', monospace; line-height: 1.5; max-width: 800px; margin-left: auto; margin-right: auto; }
         .status { margin-top: 10px; font-weight: bold; color: #e74c3c; text-align: center; }
+        
+        /* 테이블 스타일 추가 */
+        .table-container { margin-top: 30px; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; background-color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; font-size: 14px; }
+        th, td { border: 1px solid #bdc3c7; padding: 8px; vertical-align: middle; }
+        th { background-color: #fce4ec; color: #333; font-size: 16px; font-weight: bold; }
+        .time-col { background-color: #fce4ec; font-size: 18px; font-weight: bold; width: 80px; }
+        .role-col { background-color: #e8f5e9; font-weight: bold; width: 40px; color: #2e7d32; }
+        .member-cell { min-width: 120px; }
+        .empty-slot { color: #e74c3c; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -27,7 +37,11 @@
         <div id="statusText" class="status"></div>
     </div>
 
-    <pre id="outputLog">여기에 매칭 결과가 출력됩니다...</pre>
+    <!-- 요약 로그 영역 -->
+    <pre id="outputLog">여기에 요약 결과가 출력됩니다...</pre>
+
+    <!-- 표 출력 영역 -->
+    <div class="table-container" id="tableContainer"></div>
 
     <script>
         const sessionMap = {
@@ -35,6 +49,9 @@
             '베이스': 'Bass', '드럼': 'Drum', '키보드': 'Keyboard'
         };
         const engToKor = {'Vocal': '보컬', 'Guitar': '기타', 'Bass': '베이스', 'Drum': '드럼', 'Keyboard': '키보드'};
+        const shortRole = {'Vocal': 'V', 'Guitar': 'G', 'Bass': 'B', 'Drum': 'D', 'Keyboard': 'K'};
+        const days = ['월', '화', '수', '목', '금'];
+        const timeSlots = ['18-19', '19-20', '20-21', '21-22'];
 
         function timeSortKey(t_str) {
             const dayOrder = {'월': 1, '화': 2, '수': 3, '목': 4, '금': 5, '토': 6, '일': 7};
@@ -44,7 +61,6 @@
             return [dayOrder[day] || 99, timeVal];
         }
 
-        // CSV 문자열 파싱 (따옴표 처리 포함)
         function parseCSV(csv) {
             const lines = csv.replace(/\r/g, '').trim().split('\n');
             const headers = lines[0].split(',').map(h => h.trim());
@@ -89,6 +105,7 @@
             btn.disabled = true;
             statusText.textContent = "수만 번의 시뮬레이션을 돌리는 중입니다. 잠시만 기다려주세요...";
             log("데이터를 읽는 중...", false);
+            document.getElementById('tableContainer').innerHTML = ""; // 기존 테이블 초기화
 
             const file = fileInput.files[0];
             const reader = new FileReader();
@@ -114,7 +131,6 @@
                     };
                 });
 
-                // 브라우저가 멈추지 않도록 비동기 처리(setTimeout)로 연산 스레드 분리
                 setTimeout(() => runAlgorithm(studentData), 100);
             };
             reader.readAsText(file);
@@ -151,12 +167,8 @@
 
             for (let seed = 0; seed < iterations; seed++) {
                 let timesShuffled = [...allPossibleTimes];
-                
-                if (seed % 2 === 0) {
-                    timesShuffled.sort(() => Math.random() - 0.5);
-                } else {
-                    timesShuffled.sort(() => Math.random() - 0.5);
-                }
+                if (seed % 2 === 0) timesShuffled.sort(() => Math.random() - 0.5);
+                else timesShuffled.sort(() => Math.random() - 0.5);
 
                 let fulfilledRequests = new Set();
                 let studentAssignmentCount = {};
@@ -203,7 +215,7 @@
                             fulfilledRequests.add(`${chosen}|${role}`);
                             studentAssignmentCount[chosen]++;
                         } else {
-                            team[role].push("(공석)");
+                            team[role].push("🚨공석");
                         }
                     }
 
@@ -237,14 +249,14 @@
                             studentAssignmentCount[chosen]++;
                         }
                     }
-                    results[t] = [team];
+                    results[t] = team;
                 }
 
                 let zeroAssignedStudents = studentNames.filter(s => studentAssignmentCount[s] === 0).length;
                 let emptyMandatorySlots = 0;
-                Object.values(results).forEach(tTeams => {
+                Object.values(results).forEach(team => {
                     ['Vocal', 'Guitar', 'Bass', 'Drum'].forEach(role => {
-                        tTeams[0][role].forEach(m => { if(m === "(공석)") emptyMandatorySlots++; });
+                        team[role].forEach(m => { if(m === "🚨공석") emptyMandatorySlots++; });
                     });
                 });
 
@@ -259,15 +271,15 @@
                 }
             }
 
-            printResults(bestAssignment, bestFulfilled, allRequests, bestAssignmentCounts, allPossibleTimes, studentNames);
+            printResults(bestAssignment, bestFulfilled, allRequests, bestAssignmentCounts, studentNames);
         }
 
-        function printResults(results, fulfilled, allRequests, counts, allTimes, studentNames) {
+        function printResults(results, fulfilled, allRequests, counts, studentNames) {
             let zeroMembers = studentNames.filter(s => counts[s] === 0);
             let totalEmptySlots = 0;
-            Object.values(results).forEach(tTeams => {
-                Object.values(tTeams[0]).forEach(rList => {
-                    rList.forEach(m => { if(m === "(공석)") totalEmptySlots++; });
+            Object.values(results).forEach(team => {
+                Object.values(team).forEach(rList => {
+                    rList.forEach(m => { if(m === "🚨공석") totalEmptySlots++; });
                 });
             });
 
@@ -281,7 +293,7 @@
             });
 
             log(`\n==============================`);
-            log(`최종 배정 결과`);
+            log(`최종 배정 결과 요약`);
             log(`==============================`);
             log(`팀 개수: ${Object.keys(results).length}팀`);
             log(`총 ${allRequests.size}건 중 ${fulfilled.size}건 배정`);
@@ -297,22 +309,61 @@
                     log(`   - ${student}: ${roles.join(', ')}`);
                 }
             }
-            log(`==============================`);
+            log(`==============================\n아래 편성표 테이블을 확인해 주세요! 👇`);
 
-            allTimes.forEach(t => {
-                let teams = results[t];
-                log(`\n[${t}]`);
-                teams.forEach(team => {
-                    log(`    - 보컬: ${team['Vocal'].join(', ')}`);
-                    log(`    - 기타: ${team['Guitar'].join(', ')}`);
-                    log(`    - 베이스: ${team['Bass'].join(', ')}`);
-                    log(`    - 드럼: ${team['Drum'].join(', ')}`);
-                    if(team['Keyboard'].length > 0) log(`    - 키보드: ${team['Keyboard'].join(', ')}`);
-                });
-            });
+            // 테이블 렌더링
+            renderTable(results);
 
             document.getElementById('startBtn').disabled = false;
             document.getElementById('statusText').textContent = "매칭 완료!";
+            document.getElementById('statusText').style.color = "#27ae60";
+        }
+
+        function renderTable(results) {
+            const tableContainer = document.getElementById('tableContainer');
+            let tableHTML = `<table>
+                <thead>
+                    <tr>
+                        <th colspan="2"></th>`;
+            days.forEach(day => {
+                tableHTML += `<th>${day}</th>`;
+            });
+            tableHTML += `</tr></thead><tbody>`;
+
+            const rolesToRender = ['Vocal', 'Guitar', 'Bass', 'Drum', 'Keyboard'];
+
+            timeSlots.forEach(time => {
+                rolesToRender.forEach((role, idx) => {
+                    tableHTML += `<tr>`;
+                    
+                    // 시간대 셀 병합 (첫 번째 행일 때만)
+                    if (idx === 0) {
+                        tableHTML += `<td class="time-col" rowspan="5">${time}</td>`;
+                    }
+                    
+                    // 악기 기호 셀
+                    tableHTML += `<td class="role-col">${shortRole[role]}</td>`;
+
+                    // 각 요일별 셀
+                    days.forEach(day => {
+                        const timeKey = `${day} ${time}`;
+                        let cellContent = "";
+                        
+                        if (results[timeKey] && results[timeKey][role]) {
+                            cellContent = results[timeKey][role].join(', ');
+                            if (cellContent.includes("🚨공석")) {
+                                cellContent = `<span class="empty-slot">${cellContent}</span>`;
+                            }
+                        }
+                        tableHTML += `<td class="member-cell">${cellContent}</td>`;
+                    });
+
+                    tableHTML += `</tr>`;
+                });
+            });
+
+            tableHTML += `</tbody></table>`;
+            tableContainer.innerHTML = tableHTML;
         }
     </script>
 </body>
