@@ -15,14 +15,17 @@
         pre { background-color: #282c34; color: #abb2bf; padding: 15px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; font-family: 'Courier New', monospace; line-height: 1.5; max-width: 800px; margin-left: auto; margin-right: auto; }
         .status { margin-top: 10px; font-weight: bold; color: #e74c3c; text-align: center; }
         
-        /* 테이블 스타일 추가 */
+        /* 테이블 스타일 */
         .table-container { margin-top: 30px; overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; background-color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; font-size: 14px; }
         th, td { border: 1px solid #bdc3c7; padding: 8px; vertical-align: middle; }
         th { background-color: #fce4ec; color: #333; font-size: 16px; font-weight: bold; }
         .time-col { background-color: #fce4ec; font-size: 18px; font-weight: bold; width: 80px; }
         .role-col { background-color: #e8f5e9; font-weight: bold; width: 40px; color: #2e7d32; }
-        .member-cell { min-width: 120px; }
+        
+        /* 마우스 오버 효과 추가 */
+        .member-cell { min-width: 120px; transition: background-color 0.2s; cursor: help; }
+        .member-cell:hover { background-color: #fff3cd; } /* 마우스를 올리면 옅은 노란색으로 강조 */
         .empty-slot { color: #e74c3c; font-weight: bold; }
     </style>
 </head>
@@ -105,7 +108,7 @@
             btn.disabled = true;
             statusText.textContent = "수만 번의 시뮬레이션을 돌리는 중입니다. 잠시만 기다려주세요...";
             log("데이터를 읽는 중...", false);
-            document.getElementById('tableContainer').innerHTML = ""; // 기존 테이블 초기화
+            document.getElementById('tableContainer').innerHTML = ""; 
 
             const file = fileInput.files[0];
             const reader = new FileReader();
@@ -167,8 +170,12 @@
 
             for (let seed = 0; seed < iterations; seed++) {
                 let timesShuffled = [...allPossibleTimes];
-                if (seed % 2 === 0) timesShuffled.sort(() => Math.random() - 0.5);
-                else timesShuffled.sort(() => Math.random() - 0.5);
+                
+                if (seed % 2 === 0) {
+                    timesShuffled.sort(() => Math.random() - 0.5);
+                } else {
+                    timesShuffled.sort(() => Math.random() - 0.5);
+                }
 
                 let fulfilledRequests = new Set();
                 let studentAssignmentCount = {};
@@ -186,24 +193,23 @@
                         let cands = studentNames.filter(s => 
                             studentData[s].times.includes(t) && 
                             studentData[s].sessions.includes(role) && 
-                            !assignedInT.has(s)
+                            !assignedInT.has(s) &&
+                            !fulfilledRequests.has(`${s}|${role}`) // 💡 [핵심 수정] 동일 세션 2번 참여 원천 차단!
                         );
                         
                         if (cands.length > 0) {
                             cands.sort((a, b) => {
                                 let valA = [
-                                    fulfilledRequests.has(`${a}|${role}`) ? 1 : 0,
                                     studentAssignmentCount[a],
                                     studentData[a].times.length,
                                     Math.random()
                                 ];
                                 let valB = [
-                                    fulfilledRequests.has(`${b}|${role}`) ? 1 : 0,
                                     studentAssignmentCount[b],
                                     studentData[b].times.length,
                                     Math.random()
                                 ];
-                                for(let i=0; i<4; i++) {
+                                for(let i=0; i<3; i++) {
                                     if(valA[i] !== valB[i]) return valA[i] - valB[i];
                                 }
                                 return 0;
@@ -223,21 +229,20 @@
                         let cands = studentNames.filter(s => 
                             studentData[s].times.includes(t) && 
                             studentData[s].sessions.includes(optRole) && 
-                            !assignedInT.has(s)
+                            !assignedInT.has(s) &&
+                            !fulfilledRequests.has(`${s}|${optRole}`) // 💡 [핵심 수정] 선택 악기도 중복 배정 불가
                         );
                         if (cands.length > 0) {
                             cands.sort((a, b) => {
                                 let valA = [
-                                    fulfilledRequests.has(`${a}|${optRole}`) ? 1 : 0,
                                     studentAssignmentCount[a],
                                     Math.random()
                                 ];
                                 let valB = [
-                                    fulfilledRequests.has(`${b}|${optRole}`) ? 1 : 0,
                                     studentAssignmentCount[b],
                                     Math.random()
                                 ];
-                                for(let i=0; i<3; i++) {
+                                for(let i=0; i<2; i++) {
                                     if(valA[i] !== valB[i]) return valA[i] - valB[i];
                                 }
                                 return 0;
@@ -271,10 +276,10 @@
                 }
             }
 
-            printResults(bestAssignment, bestFulfilled, allRequests, bestAssignmentCounts, studentNames);
+            printResults(bestAssignment, bestFulfilled, allRequests, bestAssignmentCounts, studentNames, studentData);
         }
 
-        function printResults(results, fulfilled, allRequests, counts, studentNames) {
+        function printResults(results, fulfilled, allRequests, counts, studentNames, studentData) {
             let zeroMembers = studentNames.filter(s => counts[s] === 0);
             let totalEmptySlots = 0;
             Object.values(results).forEach(team => {
@@ -293,33 +298,33 @@
             });
 
             log(`\n==============================`);
-            log(`최종 배정 결과 요약`);
+            log(`최종 배정 결과 요약 (1세션 1회 제약 적용)`);
             log(`==============================`);
-            log(`팀 개수: ${Object.keys(results).length}팀`);
-            log(`총 ${allRequests.size}건 중 ${fulfilled.size}건 배정`);
+            log(`총 ${allRequests.size}건 중 ${fulfilled.size}건 배정 완료`);
 
             if (zeroMembers.length > 0) log(`\n배정되지 않은 부원: ${zeroMembers.join(', ')}`);
             else log(`\n전원 1회 이상 배정 완료`);
 
-            if (totalEmptySlots > 0) log(`일부 시간대에 지원자가 존재하지 않아 총 ${totalEmptySlots}자리 공석 발생`);
+            if (totalEmptySlots > 0) log(`※ 동일 세션 중복 금지 룰에 의해 필수 포지션 지원자가 고갈되어 총 ${totalEmptySlots}자리 공석 발생`);
 
             if (Object.keys(unfulfilledMap).length > 0) {
-                log(`\n미배정 세션 내역`);
+                log(`\n미배정 세션 내역 (본인의 다른 악기로 합주 참여)`);
                 for (const [student, roles] of Object.entries(unfulfilledMap)) {
                     log(`   - ${student}: ${roles.join(', ')}`);
                 }
             }
-            log(`==============================\n아래 편성표 테이블을 확인해 주세요! 👇`);
+            log(`==============================\n아래 편성표 테이블을 확인해 주세요! (마우스를 올리면 전체 지원자를 볼 수 있습니다) 👇`);
 
-            // 테이블 렌더링
-            renderTable(results);
+            // 💡 수정된 테이블 렌더링 (마우스 오버 툴팁 추가)
+            renderTable(results, studentData, studentNames);
 
             document.getElementById('startBtn').disabled = false;
             document.getElementById('statusText').textContent = "매칭 완료!";
             document.getElementById('statusText').style.color = "#27ae60";
         }
 
-        function renderTable(results) {
+        // 💡 툴팁 기능이 포함된 표 그리기 함수
+        function renderTable(results, studentData, studentNames) {
             const tableContainer = document.getElementById('tableContainer');
             let tableHTML = `<table>
                 <thead>
@@ -336,15 +341,12 @@
                 rolesToRender.forEach((role, idx) => {
                     tableHTML += `<tr>`;
                     
-                    // 시간대 셀 병합 (첫 번째 행일 때만)
                     if (idx === 0) {
                         tableHTML += `<td class="time-col" rowspan="5">${time}</td>`;
                     }
                     
-                    // 악기 기호 셀
                     tableHTML += `<td class="role-col">${shortRole[role]}</td>`;
 
-                    // 각 요일별 셀
                     days.forEach(day => {
                         const timeKey = `${day} ${time}`;
                         let cellContent = "";
@@ -355,7 +357,19 @@
                                 cellContent = `<span class="empty-slot">${cellContent}</span>`;
                             }
                         }
-                        tableHTML += `<td class="member-cell">${cellContent}</td>`;
+
+                        // 💡 마우스 오버 툴팁 내용 생성 (해당 요일/시간/악기에 투표한 전체 인원 찾기)
+                        let applicants = studentNames.filter(s => 
+                            studentData[s].times.includes(timeKey) && 
+                            studentData[s].sessions.includes(role)
+                        );
+                        
+                        let tooltipText = applicants.length > 0 
+                            ? `[${timeKey} ${engToKor[role]} 지원자: ${applicants.length}명]\n${applicants.join(', ')}` 
+                            : `[${timeKey} ${engToKor[role]} 지원자]\n없음`;
+
+                        // <td> 태그에 title 속성(툴팁) 부여
+                        tableHTML += `<td class="member-cell" title="${tooltipText}">${cellContent}</td>`;
                     });
 
                     tableHTML += `</tr>`;
