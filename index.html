@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>목멱성 정기공연 합주 매칭 시스템</title>
+    <!-- 엑셀 내보내기를 위한 SheetJS 라이브러리 추가 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         body { font-family: 'Pretendard', -apple-system, sans-serif; background-color: #f4f6f9; color: #333; max-width: 1200px; margin: 0 auto; padding: 20px; }
         h1 { color: #2c3e50; text-align: center; }
@@ -12,11 +14,15 @@
         button { background-color: #3498db; color: white; border: none; padding: 12px 20px; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold; width: 100%; transition: background 0.3s; }
         button:hover { background-color: #2980b9; }
         button:disabled { background-color: #95a5a6; cursor: not-allowed; }
+        
+        .export-btn { background-color: #27ae60; margin-top: 15px; display: none; }
+        .export-btn:hover { background-color: #219653; }
+
         pre { background-color: #282c34; color: #abb2bf; padding: 15px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; font-family: 'Courier New', monospace; line-height: 1.5; max-width: 800px; margin-left: auto; margin-right: auto; }
         .status { margin-top: 10px; font-weight: bold; color: #e74c3c; text-align: center; }
         
         /* 테이블 스타일 */
-        .table-container { margin-top: 30px; overflow-x: auto; padding-bottom: 20px; }
+        .table-container { margin-top: 15px; overflow-x: auto; padding-bottom: 20px; }
         table { width: 100%; border-collapse: collapse; background-color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; font-size: 14px; min-width: 700px; }
         th, td { border: 1px solid #bdc3c7; padding: 10px 5px; vertical-align: middle; }
         th { background-color: #fce4ec; color: #333; font-size: 16px; font-weight: bold; }
@@ -48,6 +54,7 @@
         <p>구글 폼 등에서 다운로드한 <b>응답 CSV 파일</b>을 업로드해 주세요.</p>
         <input type="file" id="csvFileInput" accept=".csv">
         <button id="startBtn" onclick="processFile()">매칭 시뮬레이션 시작</button>
+        <button id="exportBtn" class="export-btn" onclick="exportToExcel()">📥 엑셀(Excel)로 내보내기</button>
         <div id="statusText" class="status"></div>
     </div>
 
@@ -92,6 +99,8 @@
             for (let i = 1; i < lines.length; i++) {
                 let obj = {};
                 let currentLine = lines[i];
+                if (!currentLine) continue;
+                
                 let row = [];
                 let inQuotes = false;
                 let val = '';
@@ -124,8 +133,10 @@
             }
 
             const btn = document.getElementById('startBtn');
+            const exportBtn = document.getElementById('exportBtn');
             const statusText = document.getElementById('statusText');
             btn.disabled = true;
+            exportBtn.style.display = "none";
             statusText.textContent = "수만 번의 시뮬레이션을 돌리는 중입니다. 약 3~5초 소요됩니다...";
             log("데이터를 읽는 중...", false);
             document.getElementById('tableContainer').innerHTML = ""; 
@@ -203,7 +214,6 @@
                 let assignedInT = {};
                 allPossibleTimes.forEach(t => assignedInT[t] = new Set());
 
-                // 💡 [개선] 1차 배정: 모든 시간대의 필수 포지션(기타 1명 포함) 먼저 채우기
                 for (let t of timesShuffled) {
                     let roleOrder = ['Drum', 'Bass', 'Vocal', 'Guitar'];
                     roleOrder.sort(() => Math.random() - 0.5);
@@ -235,7 +245,6 @@
                     }
                 }
 
-                // 💡 [개선] 2차 배정: 필수 포지션이 다 채워진 후 남는 인원으로 세컨 기타 & 키보드 채우기
                 for (let t of timesShuffled) {
                     for (let optRole of ['Keyboard', 'Guitar']) {
                         let cands = studentNames.filter(s => 
@@ -300,10 +309,8 @@
                 }
             });
 
-            // 데이터 보관용 (클릭 팝업에서 사용)
             window.currentMatchingData = { results, studentData, studentNames };
             
-            // 각 유저별 최종 배정 정보 텍스트 맵핑
             let finalAssignments = {};
             studentNames.forEach(s => finalAssignments[s] = []);
             for (let t in results) {
@@ -338,16 +345,17 @@
             renderTable(results);
 
             document.getElementById('startBtn').disabled = false;
+            document.getElementById('exportBtn').style.display = "block"; // 엑셀 내보내기 버튼 표시
             document.getElementById('statusText').textContent = "매칭 완료!";
             document.getElementById('statusText').style.color = "#27ae60";
         }
 
         function renderTable(results) {
             const tableContainer = document.getElementById('tableContainer');
-            let tableHTML = `<table>
+            let tableHTML = `<table id="resultTable">
                 <thead>
                     <tr>
-                        <th colspan="2"></th>`;
+                        <th colspan="2">시간대 / 요일</th>`;
             days.forEach(day => {
                 tableHTML += `<th>${day}</th>`;
             });
@@ -372,7 +380,6 @@
                             }
                         }
 
-                        // 💡 onclick 이벤트 추가 (모달창 띄우기)
                         tableHTML += `<td class="member-cell" onclick="openModal('${timeKey}', '${role}')">${cellContent}</td>`;
                     });
 
@@ -384,13 +391,24 @@
             tableContainer.innerHTML = tableHTML;
         }
 
-        // 💡 팝업(모달) 제어 함수
+        // 💡 엑셀 내보내기 함수 (SheetJS 활용)
+        function exportToExcel() {
+            const table = document.getElementById("resultTable");
+            if (!table) {
+                alert("내보낼 표가 없습니다.");
+                return;
+            }
+            // HTML 테이블을 엑셀 워크북으로 변환
+            const wb = XLSX.utils.table_to_book(table, {sheet: "정기공연 매칭 결과"});
+            // 파일 다운로드 실행
+            XLSX.writeFile(wb, "목멱성_합주_매칭결과.xlsx");
+        }
+
         function openModal(timeKey, role) {
             if(!window.currentMatchingData) return;
             const sData = window.currentMatchingData.studentData;
             const names = window.currentMatchingData.studentNames;
             
-            // 해당 시간, 해당 악기에 투표한 사람 찾기
             let applicants = names.filter(s => 
                 sData[s].times.includes(timeKey) && 
                 sData[s].sessions.includes(role)
@@ -404,7 +422,6 @@
                     let assignedList = window.finalAssignments[s];
                     let assignedStr = assignedList.length > 0 ? assignedList.join(', ') : "미배정";
                     
-                    // 이 사람이 정확히 '이 시간대, 이 파트'에 확정되었는지 확인
                     let isThisSlot = assignedList.includes(`[${timeKey}] ${engToKor[role]}`);
                     
                     if (isThisSlot) {
@@ -429,13 +446,20 @@
             document.getElementById('infoModal').style.display = "none";
         }
 
-        // 모달창 바깥 클릭 시 닫기
+        // 💡 1. 바탕 클릭 시 모달 닫기
         window.onclick = function(event) {
             let modal = document.getElementById('infoModal');
             if (event.target == modal) {
-                modal.style.display = "none";
+                closeModal();
             }
         }
+
+        // 💡 2. ESC 키 누를 시 모달 닫기
+        window.addEventListener('keydown', function(event) {
+            if (event.key === "Escape") {
+                closeModal();
+            }
+        });
     </script>
 </body>
 </html>
